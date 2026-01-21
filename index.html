@@ -49,11 +49,35 @@
     a:hover {
       text-decoration: underline;
     }
+    .offline-indicator {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: bold;
+      z-index: 1000;
+    }
+    .offline-indicator.online {
+      background: #4caf50;
+      color: white;
+    }
+    .offline-indicator.offline {
+      background: #f44336;
+      color: white;
+    }
+    .offline-indicator.caching {
+      background: #ff9800;
+      color: white;
+    }
   </style>
 
     
 </head>
 <body>
+  <div class="offline-indicator" id="offlineIndicator">● Online</div>
+  
   <div class="table-container">
     <h1>Science Operations Manual</h1>
 
@@ -129,5 +153,100 @@
       
     </ul>
   </div>
+
+  <script>
+    function updateStatus() {
+      const indicator = document.getElementById('offlineIndicator');
+      if (navigator.onLine) {
+        indicator.textContent = '● Online';
+        indicator.className = 'offline-indicator online';
+      } else {
+        indicator.textContent = '● Offline';
+        indicator.className = 'offline-indicator offline';
+      }
+    }
+
+    window.addEventListener('online', updateStatus);
+    window.addEventListener('offline', updateStatus);
+    updateStatus();
+
+    function openIndexedDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open('OfflineFiles', 1);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('files')) {
+            db.createObjectStore('files', { keyPath: 'url' });
+          }
+        };
+      });
+    }
+
+    function getCachedFile(db, url) {
+      return new Promise((resolve) => {
+        const tx = db.transaction('files', 'readonly');
+        const store = tx.objectStore('files');
+        const request = store.get(url);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => resolve(null);
+      });
+    }
+
+    function cacheFile(db, url, data, type) {
+      return new Promise((resolve) => {
+        const tx = db.transaction('files', 'readwrite');
+        const store = tx.objectStore('files');
+        store.put({ url, data, type, timestamp: Date.now() });
+        tx.oncomplete = () => resolve();
+      });
+    }
+
+    document.addEventListener('click', async (e) => {
+      if (e.target.tagName === 'A' && (e.target.href.includes('sharepoint') || e.target.href.includes('environment.govt.nz'))) {
+        if (!navigator.onLine) {
+          e.preventDefault();
+          const db = await openIndexedDB();
+          const cached = await getCachedFile(db, e.target.href);
+          if (cached) {
+            const blob = new Blob([cached.data], { type: cached.type });
+            const blobUrl = URL.createObjectURL(blob);
+            window.open(blobUrl);
+          } else {
+            alert('File not cached for offline use.');
+          }
+        }
+      }
+    });
+
+    async function cacheAllFiles() {
+      if (!navigator.onLine) return;
+      const links = document.querySelectorAll('a[href*="sharepoint"], a[href*="environment.govt.nz"]');
+      const db = await openIndexedDB();
+      let cached = 0;
+      document.getElementById('offlineIndicator').className = 'offline-indicator caching';
+      
+      for (const link of links) {
+        try {
+          const response = await fetch(link.href, { mode: 'no-cors' });
+          if (response.ok) {
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            await cacheFile(db, link.href, arrayBuffer, blob.type);
+            cached++;
+          }
+        } catch (err) {
+          console.log('Cache skip:', link.href);
+        }
+        document.getElementById('offlineIndicator').textContent = '● Caching...';
+      }
+      updateStatus();
+    }
+
+    if (navigator.onLine) {
+      cacheAllFiles();
+    }
+  </script>
 </body>
 </html>
