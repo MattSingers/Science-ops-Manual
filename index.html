@@ -266,19 +266,25 @@
       
       for (const link of links) {
         try {
-          const response = await fetch(link.href);
+          const response = await fetch(link.href, { 
+            credentials: 'include'
+          });
           if (response.ok) {
             const blob = await response.blob();
             const arrayBuffer = await blob.arrayBuffer();
             await cacheFile(db, link.href, arrayBuffer, blob.type);
             cached++;
+            console.log('Cached:', link.href);
+          } else {
+            console.log('Failed to cache:', link.href, 'Status:', response.status);
           }
         } catch (err) {
-          console.log('Cache skip:', link.href);
+          console.log('Cache error:', link.href, err.message);
         }
         document.getElementById('offlineIndicator').textContent = `● Caching... (${cached})`;
       }
       updateStatus();
+      alert(`Caching complete. ${cached} files cached for offline use.`);
     }
 
     if (navigator.onLine) {
