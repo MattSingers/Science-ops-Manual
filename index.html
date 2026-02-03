@@ -266,7 +266,7 @@
       
       for (const link of links) {
         try {
-          const response = await fetch(link.href, { mode: 'no-cors' });
+          const response = await fetch(link.href);
           if (response.ok) {
             const blob = await response.blob();
             const arrayBuffer = await blob.arrayBuffer();
@@ -276,7 +276,7 @@
         } catch (err) {
           console.log('Cache skip:', link.href);
         }
-        document.getElementById('offlineIndicator').textContent = '● Caching...';
+        document.getElementById('offlineIndicator').textContent = `● Caching... (${cached})`;
       }
       updateStatus();
     }
