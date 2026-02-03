@@ -76,6 +76,20 @@
     
 </head>
 <body>
+  <script>
+    // Register Service Worker for offline caching
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then((registration) => {
+            console.log('Service Worker registered:', registration);
+          })
+          .catch((error) => {
+            console.log('Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
   <div class="offline-indicator" id="offlineIndicator">● Online</div>
   
   <div class="table-container">
@@ -206,90 +220,6 @@
     window.addEventListener('online', updateStatus);
     window.addEventListener('offline', updateStatus);
     updateStatus();
-
-    function openIndexedDB() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open('OfflineFiles', 1);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-        request.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('files')) {
-            db.createObjectStore('files', { keyPath: 'url' });
-          }
-        };
-      });
-    }
-
-    function getCachedFile(db, url) {
-      return new Promise((resolve) => {
-        const tx = db.transaction('files', 'readonly');
-        const store = tx.objectStore('files');
-        const request = store.get(url);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => resolve(null);
-      });
-    }
-
-    function cacheFile(db, url, data, type) {
-      return new Promise((resolve) => {
-        const tx = db.transaction('files', 'readwrite');
-        const store = tx.objectStore('files');
-        store.put({ url, data, type, timestamp: Date.now() });
-        tx.oncomplete = () => resolve();
-      });
-    }
-
-    document.addEventListener('click', async (e) => {
-      if (e.target.tagName === 'A' && (e.target.href.includes('sharepoint') || e.target.href.includes('environment.govt.nz'))) {
-        if (!navigator.onLine) {
-          e.preventDefault();
-          const db = await openIndexedDB();
-          const cached = await getCachedFile(db, e.target.href);
-          if (cached) {
-            const blob = new Blob([cached.data], { type: cached.type });
-            const blobUrl = URL.createObjectURL(blob);
-            window.open(blobUrl);
-          } else {
-            alert('File not cached for offline use.');
-          }
-        }
-      }
-    });
-
-    async function cacheAllFiles() {
-      if (!navigator.onLine) return;
-      const links = document.querySelectorAll('a[href*="sharepoint"], a[href*="environment.govt.nz"]');
-      const db = await openIndexedDB();
-      let cached = 0;
-      document.getElementById('offlineIndicator').className = 'offline-indicator caching';
-      
-      for (const link of links) {
-        try {
-          const response = await fetch(link.href, { 
-            credentials: 'include'
-          });
-          if (response.ok) {
-            const blob = await response.blob();
-            const arrayBuffer = await blob.arrayBuffer();
-            await cacheFile(db, link.href, arrayBuffer, blob.type);
-            cached++;
-            console.log('Cached:', link.href);
-          } else {
-            console.log('Failed to cache:', link.href, 'Status:', response.status);
-          }
-        } catch (err) {
-          console.log('Cache error:', link.href, err.message);
-        }
-        document.getElementById('offlineIndicator').textContent = `● Caching... (${cached})`;
-      }
-      updateStatus();
-      alert(`Caching complete. ${cached} files cached for offline use.`);
-    }
-
-    if (navigator.onLine) {
-      cacheAllFiles();
-    }
   </script>
 </body>
 </html>
