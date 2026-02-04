@@ -1,3 +1,5 @@
+const CACHE_NAME = 'science-ops-v1';
+
 // Files to cache
 const urlsToCache = [
   './',
@@ -38,17 +40,20 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      // Return cached response if available
-      if (response) {
-        return response;
+    // First, try to get from cache
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
       }
 
-      // Otherwise, fetch from network
-      return fetch(event.request)
+      // If not in cache, try to fetch from network
+      return fetch(event.request, { 
+        credentials: 'include',
+        mode: 'cors'
+      })
         .then((response) => {
           // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type === 'error') {
+          if (!response || response.status !== 200) {
             return response;
           }
 
@@ -66,17 +71,26 @@ self.addEventListener('fetch', (event) => {
 
           return response;
         })
-        .catch(() => {
-          // Return cached response if fetch fails and it exists
+        .catch((error) => {
+          console.log('Fetch failed, checking cache:', event.request.url);
+          
+          // If fetch fails, try to return cached version
           return caches.match(event.request).then((cachedResponse) => {
             if (cachedResponse) {
               return cachedResponse;
             }
-            // Return a simple offline message if nothing is cached
-            return new Response('Offline - file not cached', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
+            
+            // If nothing cached and offline, return offline message
+            return new Response(
+              'File not available offline. Please go online to access this file.',
+              {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: new Headers({
+                  'Content-Type': 'text/plain'
+                })
+              }
+            );
           });
         });
     })
